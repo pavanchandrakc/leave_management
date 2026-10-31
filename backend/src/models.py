@@ -118,20 +118,21 @@ class LeaveBalance(Base):
     employee_id = Column(Integer, ForeignKey("employees.id", ondelete="CASCADE"), nullable=False)
     leave_type_id = Column(Integer, ForeignKey("leave_types.id", ondelete="CASCADE"), nullable=False)
     total_days = Column(Integer, nullable=False)
-    used_days = Column(Integer, default=0)
+    used_days = Column(Integer, default=0, nullable=False)
+    remaining_days = Column(Integer)  # Stored generated column (total_days - used_days)
 
     __table_args__ = (
         UniqueConstraint("employee_id", "leave_type_id", name="unique_employee_leave_type"),
+        CheckConstraint("used_days >= 0", name="check_used_days_positive"),
+        CheckConstraint("used_days <= total_days", name="check_no_overdraft"),
     )
 
     employee = relationship("Employee", back_populates="balances")
     leave_type = relationship("LeaveType", back_populates="balances")
 
-    @property
-    def remaining_days(self) -> int:
-        return (self.total_days or 0) - (self.used_days or 0)
-
     def to_dict(self):
+        # Fallback calculation if column is not yet populated
+        rem = self.remaining_days if self.remaining_days is not None else ((self.total_days or 0) - (self.used_days or 0))
         return {
             "id": self.id,
             "employee_id": self.employee_id,
@@ -139,7 +140,7 @@ class LeaveBalance(Base):
             "leave_type": self.leave_type.name if self.leave_type else None,
             "total_days": self.total_days,
             "used_days": self.used_days,
-            "remaining_days": self.remaining_days
+            "remaining_days": rem
         }
 
 

@@ -30,6 +30,22 @@ def migrate():
         
         # 4. LeaveRequest deductible_days column
         conn.execute(text("ALTER TABLE leave_requests ADD COLUMN IF NOT EXISTS deductible_days INT DEFAULT NULL;"))
+
+        # 5. LeaveBalances remaining_days STORED GENERATED column & CHECK constraints
+        try:
+            conn.execute(text("ALTER TABLE leave_balances ADD COLUMN IF NOT EXISTS remaining_days INT GENERATED ALWAYS AS (total_days - used_days) STORED;"))
+        except Exception:
+            pass
+
+        try:
+            conn.execute(text("ALTER TABLE leave_balances ADD CONSTRAINT check_used_days_positive CHECK (used_days >= 0);"))
+        except Exception:
+            pass
+
+        try:
+            conn.execute(text("ALTER TABLE leave_balances ADD CONSTRAINT check_no_overdraft CHECK (used_days <= total_days);"))
+        except Exception:
+            pass
         
         conn.commit()
         print("Schema altered successfully.")

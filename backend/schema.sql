@@ -33,8 +33,11 @@ CREATE TABLE IF NOT EXISTS leave_balances (
     employee_id INT REFERENCES employees(id) ON DELETE CASCADE,
     leave_type_id INT REFERENCES leave_types(id) ON DELETE CASCADE,
     total_days INT NOT NULL,
-    used_days INT DEFAULT 0,
-    CONSTRAINT unique_employee_leave_type UNIQUE (employee_id, leave_type_id)
+    used_days INT DEFAULT 0 NOT NULL,
+    remaining_days INT GENERATED ALWAYS AS (total_days - used_days) STORED,
+    CONSTRAINT unique_employee_leave_type UNIQUE (employee_id, leave_type_id),
+    CONSTRAINT check_used_days_positive CHECK (used_days >= 0),
+    CONSTRAINT check_no_overdraft CHECK (used_days <= total_days)
 );
 
 -- 5. Leave Requests Table
