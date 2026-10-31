@@ -1,0 +1,52 @@
+================================================================================
+                    LEAVEFLOW HR - RUN & COMMAND CHEATSHEET
+================================================================================
+
+1. STARTING THE SYSTEM
+--------------------------------------------------------------------------------
+To use the Web UI, open two terminal windows (or run them in the background):
+
+Terminal 1 (Backend API - Port 8000):
+  .venv\Scripts\python backend\run_api.py
+
+Terminal 2 (Frontend Web Portal - Port 5173):
+  .venv\Scripts\python -m http.server 5173 --directory frontend
+
+Then open your browser at:
+  http://localhost:5173
+
+
+2. RUNNING CLAUDE DESKTOP (MCP ASSISTANT)
+--------------------------------------------------------------------------------
+You DO NOT need to run any manual command for Claude Desktop!
+Whenever Claude Desktop is launched, it automatically runs:
+  D:\leave_management_mcp\.venv\Scripts\python.exe D:\leave_management_mcp\backend\run_mcp.py
+
+Claude Desktop configuration file location:
+  %LOCALAPPDATA%\Claude-Data\claude_pzs8sxrjxfjjc\claude_desktop_config.json
+
+
+3. MANAGING / STOPPING SERVERS
+--------------------------------------------------------------------------------
+To check running python servers on Windows PowerShell:
+  Get-Process -Name "python*"
+
+To stop a server in its terminal:
+  Press Ctrl + C
+
+To stop any stuck python processes on Windows PowerShell:
+  Stop-Process -Name "python" -Force
+
+
+4. RUNNING DATABASE MIGRATIONS / SEEDING (IF NEEDED)
+--------------------------------------------------------------------------------
+If you reset your database in pgAdmin and want to seed sample users & tables:
+  .venv\Scripts\python backend\migrate.py
+
+
+5. FRONTEND QUICK URLS
+--------------------------------------------------------------------------------
+Web UI Portal:       http://localhost:5173
+Backend API:         http://127.0.0.1:8000
+Interactive API Docs: http://127.0.0.1:8000/docs
+================================================================================
