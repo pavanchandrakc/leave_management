@@ -56,6 +56,12 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
         Monthly Analytics & CSV
       </button>
+
+      <!-- Company Holidays Tab -->
+      <button class="tab-btn" id="tabHolidays" onclick="switchView('holidays')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+        Holidays Calendar
+      </button>
     </nav>
 
     <!-- ==================== 1. EMPLOYEE VIEW ==================== -->
@@ -78,8 +84,9 @@
               <select id="leaveTypeSelect" class="form-input" required></select>
             </div>
             <div class="form-group">
-              <label class="form-label">Calculated Duration</label>
-              <input type="text" id="durationDisplay" class="form-input" value="0 days" readonly style="opacity: 0.7;">
+              <label class="form-label">Calculated Working Days</label>
+              <input type="text" id="durationDisplay" class="form-input" value="0 working days" readonly style="opacity: 0.85; font-weight: 600;">
+              <small id="durationBreakdown" style="display: block; margin-top: 0.35rem; font-size: 0.75rem; color: var(--primary); min-height: 1.1rem;"></small>
             </div>
             <div class="form-group">
               <label class="form-label" for="startDateInput">Start Date</label>
@@ -237,7 +244,7 @@
                 <th>Leave Type</th>
                 <th>Start Date</th>
                 <th>End Date</th>
-                <th>Days</th>
+                <th>Working Days</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -246,6 +253,41 @@
             </tbody>
           </table>
         </div>
+      </div>
+    </section>
+
+    <!-- ==================== 4. COMPANY HOLIDAYS VIEW ==================== -->
+    <section id="viewHolidays" style="display: none;">
+      <div class="glass-panel" style="padding: 2rem; margin-bottom: 2rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+          <div>
+            <h2 style="font-size: 1.25rem; font-weight: 700;">Company Public Holidays (2026)</h2>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">
+              Official declared paid holidays. Leaves spanning these dates automatically exclude them from balance deductions.
+            </p>
+          </div>
+          <div style="display: flex; gap: 0.75rem;">
+            <button class="btn btn-primary btn-sm" onclick="loadHolidays()">Refresh Calendar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Holidays Grid -->
+      <div class="table-responsive glass-panel" style="padding: 1.5rem;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Holiday Name</th>
+              <th>Date</th>
+              <th>Day of Week</th>
+              <th>Description / Type</th>
+            </tr>
+          </thead>
+          <tbody id="holidaysTableBody">
+            <!-- Dynamically populated -->
+          </tbody>
+        </table>
       </div>
     </section>
 

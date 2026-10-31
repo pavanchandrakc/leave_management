@@ -10,6 +10,7 @@ const userSelect = document.getElementById("userSelect");
 const roleBadge = document.getElementById("roleBadge");
 const leaveTypeSelect = document.getElementById("leaveTypeSelect");
 const durationDisplay = document.getElementById("durationDisplay");
+const durationBreakdown = document.getElementById("durationBreakdown");
 const startDateInput = document.getElementById("startDateInput");
 const endDateInput = document.getElementById("endDateInput");
 const pendingBadge = document.getElementById("pendingBadge");
@@ -26,6 +27,11 @@ function initDateSelectors() {
   const todayStr = now.toISOString().split("T")[0];
   startDateInput.min = todayStr;
   endDateInput.min = todayStr;
+
+  // Listen for leave type change to update working days preview
+  leaveTypeSelect.addEventListener("change", () => {
+    calculateDays();
+  });
 
   // Populate report dropdowns
   const mSelect = document.getElementById("reportMonthSelect");
@@ -64,10 +70,11 @@ async function loadInitialData() {
       onUserChanged(Number(e.target.value));
     });
 
-    // Populate leave types
-    leaveTypeSelect.innerHTML = leaveTypes.map(t => 
-      `<option value="${t.name}">${t.name} (Max ${t.default_days_allowed}d)</option>`
-    ).join("");
+    // Populate leave types with policy info
+    leaveTypeSelect.innerHTML = leaveTypes.map(t => {
+      const extra = t.max_consecutive_days ? ` • Max ${t.max_consecutive_days}d in a row` : "";
+      return `<option value="${t.name}">${t.name} (Allotted: ${t.default_days_allowed}d${extra})</option>`;
+    }).join("");
 
     if (employees.length > 0) {
       onUserChanged(employees[0].id);
@@ -107,13 +114,17 @@ function switchView(viewName) {
   document.getElementById("viewEmployee").style.display = viewName === "employee" ? "block" : "none";
   document.getElementById("viewHr").style.display = viewName === "hr" ? "block" : "none";
   document.getElementById("viewReports").style.display = viewName === "reports" ? "block" : "none";
+  document.getElementById("viewHolidays").style.display = viewName === "holidays" ? "block" : "none";
 
   document.getElementById("tabEmployee").classList.toggle("active", viewName === "employee");
   document.getElementById("tabHr").classList.toggle("active", viewName === "hr");
   document.getElementById("tabReports").classList.toggle("active", viewName === "reports");
+  document.getElementById("tabHolidays").classList.toggle("active", viewName === "holidays");
 
   if (viewName === "reports") {
     loadMonthlyReport();
+  } else if (viewName === "holidays") {
+    loadHolidays();
   }
 }
 
@@ -153,7 +164,7 @@ async function loadEmployeeDashboard(empId) {
         <td><strong>${r.leave_type}</strong></td>
         <td>${r.start_date}</td>
         <td>${r.end_date}</td>
-        <td>${r.days} d</td>
+        <td><strong>${r.days}</strong> working days</td>
         <td>${escapeHtml(r.reason || "-")}</td>
         <td><span class="status-pill ${r.status.toLowerCase()}">${r.status}</span></td>
         <td style="color: var(--text-muted);">${escapeHtml(r.decision_notes || "-")}</td>
@@ -164,19 +175,43 @@ async function loadEmployeeDashboard(empId) {
   }
 }
 
-function calculateDays() {
+async function calculateDays() {
   const s = startDateInput.value;
   const e = endDateInput.value;
-  if (s && e) {
-    const d1 = new Date(s);
-    const d2 = new Date(e);
-    const diffTime = d2 - d1;
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-    if (diffDays > 0) {
-      durationDisplay.value = `${diffDays} day${diffDays > 1 ? "s" : ""}`;
-    } else {
-      durationDisplay.value = "Invalid date range";
+  const lt = leaveTypeSelect.value;
+
+  if (!s || !e || !lt) {
+    durationDisplay.value = "0 working days";
+    if (durationBreakdown) durationBreakdown.textContent = "";
+    return;
+  }
+
+  if (e < s) {
+    durationDisplay.value = "Invalid date range";
+    if (durationBreakdown) durationBreakdown.textContent = "End date cannot precede start date";
+    return;
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/leave-requests/calculate?leave_type_name=${encodeURIComponent(lt)}&start_date=${s}&end_date=${e}`);
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Error calculating days");
     }
+    const data = await res.json();
+    
+    durationDisplay.value = `${data.deductible_days} working day${data.deductible_days === 1 ? "" : "s"}`;
+    
+    if (durationBreakdown) {
+      if (data.breakdown && data.breakdown.length > 0) {
+        durationBreakdown.textContent = `(${data.calendar_days} calendar days: ${data.breakdown.join(", ")})`;
+      } else {
+        durationBreakdown.textContent = `(${data.calendar_days} calendar days, 0 excluded days)`;
+      }
+    }
+  } catch (err) {
+    durationDisplay.value = "Error";
+    if (durationBreakdown) durationBreakdown.textContent = err.message;
   }
 }
 
@@ -211,9 +246,10 @@ async function handleApplyLeave(event) {
       throw new Error(data.detail || "Error submitting leave request");
     }
 
-    showToast("Leave request submitted for HR approval!", "success");
+    showToast(`Leave request submitted (${data.days} working days)!`, "success");
     document.getElementById("applyLeaveForm").reset();
-    durationDisplay.value = "0 days";
+    durationDisplay.value = "0 working days";
+    if (durationBreakdown) durationBreakdown.textContent = "";
 
     await refreshAll();
   } catch (err) {
@@ -253,7 +289,7 @@ async function loadHrData() {
           <td>${r.department || "-"}</td>
           <td>${r.leave_type}</td>
           <td>${r.start_date} → ${r.end_date}</td>
-          <td><span style="font-weight: 700;">${r.days}</span> days</td>
+          <td><span style="font-weight: 700; color: var(--primary);">${r.days}</span> working days</td>
           <td style="max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(r.reason || "-")}</td>
           <td style="color: var(--text-dim); font-size: 0.8rem;">${r.applied_at ? r.applied_at.substring(0, 10) : "-"}</td>
           <td>
@@ -274,7 +310,7 @@ async function loadHrData() {
         <td>${r.employee_name}</td>
         <td>${r.department || "-"}</td>
         <td>${r.leave_type}</td>
-        <td>${r.start_date} → ${r.end_date} (${r.days}d)</td>
+        <td>${r.start_date} → ${r.end_date} (${r.days} working days)</td>
         <td><span class="status-pill ${r.status.toLowerCase()}">${r.status}</span></td>
         <td style="color: var(--text-muted);">${escapeHtml(r.decision_notes || "-")}</td>
       </tr>
@@ -286,7 +322,7 @@ async function loadHrData() {
 
 async function handleDecision(requestId, status) {
   const notes = prompt(`Optional decision comment for ${status}:`, status === "APPROVED" ? "Approved by HR" : "Rejected");
-  if (notes === null) return; // user cancelled prompt
+  if (notes === null) return;
 
   try {
     const res = await fetch(`${API_BASE}/leave-requests/${requestId}/status`, {
@@ -342,7 +378,7 @@ async function loadMonthlyReport() {
       deptDiv.innerHTML = depts.map(([d, days]) => `
         <div style="display: flex; justify-content: space-between; margin-bottom: 0.6rem; font-size: 0.9rem;">
           <span>${d}</span>
-          <strong>${days} days</strong>
+          <strong>${days} working days</strong>
         </div>
       `).join("");
     }
@@ -356,7 +392,7 @@ async function loadMonthlyReport() {
       typeDiv.innerHTML = types.map(([t, days]) => `
         <div style="display: flex; justify-content: space-between; margin-bottom: 0.6rem; font-size: 0.9rem;">
           <span>${t}</span>
-          <strong>${days} days</strong>
+          <strong>${days} working days</strong>
         </div>
       `).join("");
     }
@@ -374,7 +410,7 @@ async function loadMonthlyReport() {
           <td>${r.Leave_Type}</td>
           <td>${r.Start_Date}</td>
           <td>${r.End_Date}</td>
-          <td>${r.Days} d</td>
+          <td>${r.Working_Days} working days</td>
           <td><span class="status-pill ${r.Status.toLowerCase()}">${r.Status}</span></td>
         </tr>
       `).join("");
@@ -388,6 +424,38 @@ function downloadCsv() {
   const month = document.getElementById("reportMonthSelect").value;
   const year = document.getElementById("reportYearSelect").value;
   window.open(`${API_BASE}/reports/monthly?year=${year}&month=${month}&download=true`, "_blank");
+}
+
+// ----------------- HOLIDAYS VIEW -----------------
+async function loadHolidays() {
+  try {
+    const res = await fetch(`${API_BASE}/holidays?year=2026`);
+    const holidays = await res.json();
+    const tbody = document.getElementById("holidaysTableBody");
+
+    const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+    if (holidays.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-dim); padding: 2rem;">No holidays registered.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = holidays.map((h, idx) => {
+      const d = new Date(h.holiday_date + "T00:00:00");
+      const dayName = daysOfWeek[d.getDay()];
+      return `
+        <tr>
+          <td style="color: var(--text-dim);">${idx + 1}</td>
+          <td><strong>${escapeHtml(h.name)}</strong></td>
+          <td><span style="font-family: monospace; color: var(--primary);">${h.holiday_date}</span></td>
+          <td>${dayName}</td>
+          <td style="color: var(--text-muted);">${escapeHtml(h.description || "-")}</td>
+        </tr>
+      `;
+    }).join("");
+  } catch (err) {
+    showToast("Error loading holidays: " + err.message, "error");
+  }
 }
 
 // ----------------- UTILS -----------------

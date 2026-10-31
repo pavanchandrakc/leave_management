@@ -9,6 +9,7 @@ from sqlalchemy import (
     Column,
     Integer,
     String,
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -73,6 +74,10 @@ class LeaveType(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(50), unique=True, nullable=False)
     default_days_allowed = Column(Integer, default=12)
+    counts_weekends = Column(Boolean, default=False, nullable=False)
+    counts_holidays = Column(Boolean, default=False, nullable=False)
+    max_consecutive_days = Column(Integer, nullable=True)
+    description = Column(String(255), nullable=True)
 
     balances = relationship("LeaveBalance", back_populates="leave_type", cascade="all, delete-orphan")
     leave_requests = relationship("LeaveRequest", back_populates="leave_type", cascade="all, delete-orphan")
@@ -81,7 +86,28 @@ class LeaveType(Base):
         return {
             "id": self.id,
             "name": self.name,
-            "default_days_allowed": self.default_days_allowed
+            "default_days_allowed": self.default_days_allowed,
+            "counts_weekends": bool(self.counts_weekends),
+            "counts_holidays": bool(self.counts_holidays),
+            "max_consecutive_days": self.max_consecutive_days,
+            "description": self.description
+        }
+
+
+class Holiday(Base):
+    __tablename__ = "holidays"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    holiday_date = Column(Date, unique=True, nullable=False, index=True)
+    description = Column(String(255), nullable=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "holiday_date": self.holiday_date.isoformat() if self.holiday_date else None,
+            "description": self.description
         }
 
 
@@ -125,6 +151,7 @@ class LeaveRequest(Base):
     leave_type_id = Column(Integer, ForeignKey("leave_types.id", ondelete="CASCADE"), nullable=False)
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
+    deductible_days = Column(Integer, nullable=True)
     reason = Column(Text, nullable=True)
     status = Column(String(20), default="PENDING")
     applied_at = Column(DateTime, default=datetime.utcnow)
@@ -139,6 +166,8 @@ class LeaveRequest(Base):
 
     @property
     def days(self) -> int:
+        if self.deductible_days is not None:
+            return self.deductible_days
         if self.start_date and self.end_date:
             return (self.end_date - self.start_date).days + 1
         return 0
@@ -174,21 +203,62 @@ def get_session():
         session.close()
 
 
+DEFAULT_HOLIDAYS = [
+    {"name": "New Year's Day", "date": "2026-01-01", "description": "National Public Holiday"},
+    {"name": "Republic Day", "date": "2026-01-26", "description": "National Holiday"},
+    {"name": "Holi", "date": "2026-03-04", "description": "Festival of Colors"},
+    {"name": "Good Friday", "date": "2026-04-03", "description": "Public Holiday"},
+    {"name": "Labor Day / May Day", "date": "2026-05-01", "description": "International Workers' Day"},
+    {"name": "Independence Day", "date": "2026-08-15", "description": "National Holiday"},
+    {"name": "Gandhi Jayanti", "date": "2026-10-02", "description": "National Holiday"},
+    {"name": "Diwali", "date": "2026-11-08", "description": "Festival of Lights"},
+    {"name": "Christmas Day", "date": "2026-12-25", "description": "Public Holiday"},
+]
+
+
 def init_db():
     """Automatically create all tables in PostgreSQL and seed initial sample data if empty."""
     Base.metadata.create_all(bind=engine)
     with get_session() as session:
-        # Seed leave types if not present
+        # 1. Seed or update leave types
         if session.query(LeaveType).count() == 0:
             leave_types = [
-                LeaveType(name="Sick Leave", default_days_allowed=10),
-                LeaveType(name="Casual Leave", default_days_allowed=12),
-                LeaveType(name="Paid Leave", default_days_allowed=15),
+                LeaveType(
+                    name="Sick Leave",
+                    default_days_allowed=10,
+                    counts_weekends=False,
+                    counts_holidays=False,
+                    max_consecutive_days=15,
+                    description="Medical leave for illnesses and medical appointments"
+                ),
+                LeaveType(
+                    name="Casual Leave",
+                    default_days_allowed=12,
+                    counts_weekends=False,
+                    counts_holidays=False,
+                    max_consecutive_days=3,
+                    description="Short-term personal time off (max 3 consecutive working days)"
+                ),
+                LeaveType(
+                    name="Paid Leave",
+                    default_days_allowed=15,
+                    counts_weekends=False,
+                    counts_holidays=False,
+                    max_consecutive_days=None,
+                    description="Earned annual vacation leave"
+                ),
             ]
             session.add_all(leave_types)
             session.flush()
 
-        # Seed sample employees if not present
+        # 2. Seed holidays if not present
+        if session.query(Holiday).count() == 0:
+            for h in DEFAULT_HOLIDAYS:
+                h_date = datetime.strptime(h["date"], "%Y-%m-%d").date()
+                session.add(Holiday(name=h["name"], holiday_date=h_date, description=h["description"]))
+            session.flush()
+
+        # 3. Seed sample employees if not present
         if session.query(Employee).count() == 0:
             emp1 = Employee(name="John Doe", email="john.doe@example.com", department="Engineering", role="EMPLOYEE")
             emp2 = Employee(name="Jane Smith", email="jane.smith@example.com", department="Design", role="EMPLOYEE")
