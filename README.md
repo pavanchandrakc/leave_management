@@ -1,169 +1,96 @@
-# Leave Management MCP Server
+# LeaveFlow HR - Leave Management System & MCP Server
 
-A Model Context Protocol (MCP) server for managing employee leaves, integrated with PostgreSQL (accessible via pgAdmin) and designed to work seamlessly with **Claude Desktop**.
-
----
-
-## 🌟 Overview
-
-This project implements a Model Context Protocol (MCP) server that empowers Claude Desktop to act as an HR Leave Management Assistant. Using Claude, you can:
-- Check employee leave balances.
-- Apply for leaves (Casual, Sick, Earned, etc.).
-- View, approve, or reject pending leave requests.
-- List leave history and upcoming team absences.
-- Store and retrieve all records from a **PostgreSQL** database (viewable and manageable in **pgAdmin**).
+A comprehensive Employee Leave Management System integrated with **PostgreSQL (pgAdmin)**, a **FastAPI backend**, a modern **Responsive Web UI**, and **Claude Desktop MCP integration**.
 
 ---
 
-## 🏗️ Architecture
+## 📁 Project Structure
 
 ```
-+------------------+         stdio         +-------------------------+         SQL          +--------------------+
-|  Claude Desktop  | <-------------------> |  Leave Management MCP   | <------------------->  |     PostgreSQL     |
-|                  |                       |       (Python/Node)     |                        | (pgAdmin4 manager) |
-+------------------+                       +-------------------------+                        +--------------------+
-```
-
----
-
-## 🗄️ Database Setup (PostgreSQL & pgAdmin)
-
-1. Open **pgAdmin** and connect to your PostgreSQL server.
-2. Create a new database named `leave_management_db` (or your preferred name).
-3. Open the **Query Tool** inside pgAdmin and execute the following DDL script:
-
-```sql
--- 1. Employees Table
-CREATE TABLE employees (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    department VARCHAR(50),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- 2. Leave Types Table
-CREATE TABLE leave_types (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(50) UNIQUE NOT NULL, -- e.g., 'Sick Leave', 'Casual Leave', 'Paid Leave'
-    default_days_allowed INT DEFAULT 12
-);
-
--- 3. Leave Balances Table
-CREATE TABLE leave_balances (
-    id SERIAL PRIMARY KEY,
-    employee_id INT REFERENCES employees(id) ON DELETE CASCADE,
-    leave_type_id INT REFERENCES leave_types(id) ON DELETE CASCADE,
-    total_days INT NOT NULL,
-    used_days INT DEFAULT 0,
-    CONSTRAINT unique_employee_leave_type UNIQUE (employee_id, leave_type_id)
-);
-
--- 4. Leave Requests Table
-CREATE TABLE leave_requests (
-    id SERIAL PRIMARY KEY,
-    employee_id INT REFERENCES employees(id) ON DELETE CASCADE,
-    leave_type_id INT REFERENCES leave_types(id) ON DELETE CASCADE,
-    start_date DATE NOT NULL,
-    end_date DATE NOT NULL,
-    reason TEXT,
-    status VARCHAR(20) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED', 'CANCELLED')),
-    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    decision_notes TEXT
-);
-
--- Sample Data Seeding
-INSERT INTO leave_types (name, default_days_allowed) VALUES 
-('Sick Leave', 10),
-('Casual Leave', 12),
-('Paid Leave', 15);
-
-INSERT INTO employees (name, email, department) VALUES 
-('John Doe', 'john.doe@example.com', 'Engineering'),
-('Jane Smith', 'jane.smith@example.com', 'Design');
-
--- Seed Balances for John Doe (id = 1)
-INSERT INTO leave_balances (employee_id, leave_type_id, total_days, used_days) VALUES
-(1, 1, 10, 0),
-(1, 2, 12, 2),
-(1, 3, 15, 0);
+d:\leave_management_mcp\
+├── backend\
+│   ├── .env                       # PostgreSQL credentials
+│   ├── migrate.py                 # Schema migration helper
+│   ├── requirements.txt           # Python dependencies
+│   ├── run_api.py                 # FastAPI backend server (Port 8000)
+│   ├── run_mcp.py                 # Claude Desktop MCP stdio server
+│   ├── schema.sql                 # Base SQL schema
+│   └── src\
+│       ├── api.py                 # REST API endpoints + CSV export
+│       ├── db.py                  # Database connection helpers
+│       ├── models.py              # SQLAlchemy 2.0 ORM models
+│       └── server.py              # FastMCP tools
+├── frontend\
+│   ├── index.html                 # Main Single Page App
+│   ├── style.css                  # Dark glassmorphic design system
+│   └── app.js                     # Frontend logic (Roles, Forms, CSV)
+└── .venv\                         # Python virtual environment
 ```
 
 ---
 
-## ⚙️ Environment Configuration
+## 🚀 Running the System
 
-Create a `.env` file in the project root:
-
-```env
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=leave_management_db
-DB_USER=postgres
-DB_PASSWORD=your_postgres_password
+### 1. Start the Backend API
+```powershell
+.venv\Scripts\python backend\run_api.py
 ```
+- API runs at: `http://127.0.0.1:8000`
+- Interactive Swagger docs at: `http://127.0.0.1:8000/docs`
+
+### 2. Start the Frontend Web UI
+```powershell
+.venv\Scripts\python -m http.server 5173 --directory frontend
+```
+- Open your browser to: **`http://localhost:5173`**
 
 ---
 
-## 🛠️ MCP Tools Exposed to Claude Desktop
+## 🌟 Key Features
 
-| Tool Name | Parameters | Description |
-| :--- | :--- | :--- |
-| `get_leave_balances` | `employee_id` or `email` | Check remaining & allocated leave days. |
-| `apply_leave` | `employee_id`, `leave_type`, `start_date`, `end_date`, `reason` | Submit a new leave request. |
-| `list_leave_requests` | `status` *(optional: PENDING, APPROVED, etc.)*, `employee_id` *(optional)* | Retrieve leave requests. |
-| `update_leave_status` | `request_id`, `status` *(APPROVED/REJECTED)*, `notes` *(optional)* | Approve or reject a leave request and adjust balance. |
-| `get_team_leaves` | `start_date`, `end_date`, `department` *(optional)* | View who is on leave during a given period. |
+### 👤 1. Employee Portal
+- **Profile Selector**: Switch between employees (e.g. John Doe, Jane Smith).
+- **Live KPI Balance Cards**: Shows Sick Leave, Casual Leave, and Paid Leave balances.
+- **Request Leave Form**: Auto-calculates days, verifies available balance, and submits requests.
+- **My Leave History**: Real-time status tracker (Pending, Approved, Rejected).
+
+### 🛡️ 2. HR Admin Portal
+- Switch user to **Sarah Connor (HR)** to activate the HR Admin View.
+- **Pending Approvals Queue**: Live table of all pending submissions from employees.
+- **1-Click Approve / Reject**: With optional notes.
+- **Automatic Balance Deduction**: Approving a request instantly decreases the employee's available days in PostgreSQL.
+
+### 📊 3. Monthly Analytics & CSV Export
+- Filter by any **Month & Year** (e.g., October 2026, November 2026).
+- **KPI Metrics**: Total applications, total absent days, pending count.
+- **Department Breakdown**: Absenteeism distribution by department (Engineering, Design, HR).
+- **Export CSV**: One-click download of the complete monthly report as a `.csv` file.
 
 ---
 
-## 🖥️ Claude Desktop Configuration
+## 🤖 Claude Desktop Configuration
 
-Add this server to your Claude Desktop configuration file:
-
-- **Windows Path**: `%APPDATA%\Claude\claude_desktop_config.json`
-- **macOS Path**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-### Python (`FastMCP` / `mcp`) Setup Example:
+The MCP server has been updated to point to the new `backend/run_mcp.py` runner:
 
 ```json
 {
   "mcpServers": {
     "leave-management": {
-      "command": "python",
-      "args": ["-m", "src.server"],
-      "cwd": "d:\\leave_management_mcp",
+      "command": "D:\\leave_management_mcp\\.venv\\Scripts\\python.exe",
+      "args": ["D:\\leave_management_mcp\\backend\\run_mcp.py"],
+      "cwd": "D:\\leave_management_mcp\\backend",
       "env": {
-        "DB_HOST": "localhost",
-        "DB_PORT": "5432",
-        "DB_NAME": "leave_management_db",
-        "DB_USER": "postgres",
-        "DB_PASSWORD": "your_postgres_password"
+        "PYTHONPATH": "D:\\leave_management_mcp\\backend"
       }
     }
   }
 }
 ```
 
----
-
-## 🚀 Running & Developing
-
-### Prerequisites
-- Python 3.10+ (or Node.js 18+)
-- PostgreSQL 14+ with pgAdmin 4
-- Claude Desktop application
-
-### Setup Instructions
-1. Clone / open this repository.
-2. Create and activate a virtual environment:
-   ```bash
-   python -m venv .venv
-   .venv\Scripts\activate   # On Windows
-   ```
-3. Install dependencies:
-   ```bash
-   pip install mcp psycopg2-binary python-dotenv
-   ```
-4. Configure your `.env` credentials.
-5. Restart Claude Desktop.
+### Available Claude Tools:
+- `get_leave_balances(employee_id, email)`
+- `apply_leave(employee_id, leave_type_name, start_date, end_date, reason)`
+- `list_leave_requests(status, employee_id)`
+- `update_leave_status(request_id, status, notes)`
+- `get_team_leaves(start_date, end_date, department)`
+- `generate_monthly_leave_report(year, month, format='json'|'csv')`

@@ -1,4 +1,6 @@
 import json
+import csv
+import io
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any
 from mcp.server.fastmcp import FastMCP
@@ -18,10 +20,7 @@ def to_json(data: Any) -> str:
 
 @mcp.tool()
 def setup_database() -> str:
-    """
-    Initialize database tables and default seed data automatically in PostgreSQL.
-    Can be run directly from Claude if tables are not yet created in pgAdmin.
-    """
+    """Initialize database tables and default seed data in PostgreSQL."""
     try:
         init_db()
         return "Database tables and initial seed data created successfully!"
@@ -30,9 +29,7 @@ def setup_database() -> str:
 
 @mcp.tool()
 def get_leave_balances(employee_id: Optional[int] = None, email: Optional[str] = None) -> str:
-    """
-    Get the leave balances for an employee using either their employee_id or email.
-    """
+    """Get the leave balances for an employee using either employee_id or email."""
     if not employee_id and not email:
         return "Error: Please provide either employee_id or email."
 
@@ -60,6 +57,7 @@ def get_leave_balances(employee_id: Optional[int] = None, email: Optional[str] =
             "employee_name": emp.name,
             "email": emp.email,
             "department": emp.department,
+            "role": emp.role,
             "leave_balances": balances_data
         })
 
@@ -71,10 +69,7 @@ def apply_leave(
     end_date: str,
     reason: str
 ) -> str:
-    """
-    Submit a new leave request.
-    Dates must be in 'YYYY-MM-DD' format.
-    """
+    """Submit a new leave request (Dates: 'YYYY-MM-DD')."""
     try:
         s_date = datetime.strptime(start_date.strip(), "%Y-%m-%d").date()
         e_date = datetime.strptime(end_date.strip(), "%Y-%m-%d").date()
@@ -87,17 +82,14 @@ def apply_leave(
     days_requested = (e_date - s_date).days + 1
 
     with get_session() as session:
-        # Check employee
         emp = session.query(Employee).filter(Employee.id == employee_id).first()
         if not emp:
             return f"Error: Employee with ID {employee_id} not found."
 
-        # Check leave type
         lt = session.query(LeaveType).filter(LeaveType.name.ilike(leave_type_name.strip())).first()
         if not lt:
             return f"Error: Leave type '{leave_type_name}' does not exist."
 
-        # Check balance
         bal = session.query(LeaveBalance).filter(
             LeaveBalance.employee_id == employee_id,
             LeaveBalance.leave_type_id == lt.id
@@ -109,7 +101,6 @@ def apply_leave(
         if bal.remaining_days < days_requested:
             return f"Warning: Requested {days_requested} day(s), but only {bal.remaining_days} day(s) remaining."
 
-        # Create request
         req = LeaveRequest(
             employee_id=emp.id,
             leave_type_id=lt.id,
@@ -133,11 +124,7 @@ def apply_leave(
 
 @mcp.tool()
 def list_leave_requests(status: Optional[str] = None, employee_id: Optional[int] = None) -> str:
-    """
-    List leave requests with optional filters:
-    - status: 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'
-    - employee_id: filter by a specific employee's ID
-    """
+    """List leave requests with optional filters ('PENDING', 'APPROVED', etc.)."""
     with get_session() as session:
         query = session.query(LeaveRequest)
         if status:
@@ -150,11 +137,7 @@ def list_leave_requests(status: Optional[str] = None, employee_id: Optional[int]
 
 @mcp.tool()
 def update_leave_status(request_id: int, status: str, notes: Optional[str] = None) -> str:
-    """
-    Approve or reject a leave request.
-    Valid status values: 'APPROVED', 'REJECTED'
-    If approved, automatically deducts from the employee's leave balance in PostgreSQL.
-    """
+    """Approve or reject a leave request. If approved, deducts from employee balance."""
     status_upper = status.strip().upper()
     if status_upper not in ("APPROVED", "REJECTED"):
         return "Error: Status must be either 'APPROVED' or 'REJECTED'."
@@ -188,10 +171,7 @@ def update_leave_status(request_id: int, status: str, notes: Optional[str] = Non
 
 @mcp.tool()
 def get_team_leaves(start_date: str, end_date: str, department: Optional[str] = None) -> str:
-    """
-    Find which team members are on approved leave during a given date window.
-    Dates must be in 'YYYY-MM-DD' format.
-    """
+    """Find team members on approved leave in a date window."""
     try:
         s_date = datetime.strptime(start_date.strip(), "%Y-%m-%d").date()
         e_date = datetime.strptime(end_date.strip(), "%Y-%m-%d").date()
@@ -210,7 +190,77 @@ def get_team_leaves(start_date: str, end_date: str, department: Optional[str] = 
         results = query.order_by(LeaveRequest.start_date.asc()).all()
         return to_json([r.to_dict() for r in results])
 
+@mcp.tool()
+def generate_monthly_leave_report(year: int, month: int, format: str = "json") -> str:
+    """
+    Generate leave trends, absenteeism, and department-wise usage for a specific year and month.
+    format: 'json' or 'csv'
+    """
+    import calendar
+    _, last_day = calendar.monthrange(year, month)
+    m_start = date(year, month, 1)
+    m_end = date(year, month, last_day)
+
+    with get_session() as session:
+        # All leaves overlapping this month
+        requests = session.query(LeaveRequest).join(Employee).join(LeaveType).filter(
+            LeaveRequest.start_date <= m_end,
+            LeaveRequest.end_date >= m_start
+        ).all()
+
+        dept_usage: Dict[str, int] = {}
+        type_usage: Dict[str, int] = {}
+        status_counts: Dict[str, int] = {"PENDING": 0, "APPROVED": 0, "REJECTED": 0}
+        total_days_taken = 0
+
+        rows = []
+        for r in requests:
+            dept = r.employee.department or "General"
+            lt_name = r.leave_type.name
+            st = r.status.upper()
+            status_counts[st] = status_counts.get(st, 0) + 1
+
+            if st == "APPROVED":
+                dept_usage[dept] = dept_usage.get(dept, 0) + r.days
+                type_usage[lt_name] = type_usage.get(lt_name, 0) + r.days
+                total_days_taken += r.days
+
+            rows.append({
+                "Request_ID": r.id,
+                "Employee_Name": r.employee.name,
+                "Department": dept,
+                "Leave_Type": lt_name,
+                "Start_Date": r.start_date.isoformat(),
+                "End_Date": r.end_date.isoformat(),
+                "Days": r.days,
+                "Status": r.status,
+                "Reason": r.reason or "",
+                "Decision_Notes": r.decision_notes or ""
+            })
+
+        if format.lower() == "csv":
+            output = io.StringIO()
+            if rows:
+                writer = csv.DictWriter(output, fieldnames=list(rows[0].keys()))
+                writer.writeheader()
+                writer.writerows(rows)
+            else:
+                output.write("No leave requests found for this period.")
+            return output.getvalue()
+
+        return to_json({
+            "year": year,
+            "month": month,
+            "summary": {
+                "total_requests": len(requests),
+                "total_days_approved": total_days_taken,
+                "status_counts": status_counts,
+                "department_usage_days": dept_usage,
+                "leave_type_usage_days": type_usage
+            },
+            "records": rows
+        })
+
 if __name__ == "__main__":
-    # Ensure tables exist on server startup
     init_db()
     mcp.run(transport="stdio")

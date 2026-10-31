@@ -24,7 +24,11 @@ from sqlalchemy.orm import (
     Session
 )
 
-load_dotenv()
+# Look for .env in current file's parent or backend folder
+env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+if not os.path.exists(env_path):
+    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+load_dotenv(dotenv_path=env_path)
 
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "5432")
@@ -46,6 +50,7 @@ class Employee(Base):
     name = Column(String(100), nullable=False)
     email = Column(String(100), unique=True, nullable=False, index=True)
     department = Column(String(50), nullable=True)
+    role = Column(String(20), default="EMPLOYEE")  # 'EMPLOYEE' or 'HR'
     created_at = Column(DateTime, default=datetime.utcnow)
 
     balances = relationship("LeaveBalance", back_populates="employee", cascade="all, delete-orphan")
@@ -57,6 +62,7 @@ class Employee(Base):
             "name": self.name,
             "email": self.email,
             "department": self.department,
+            "role": self.role or "EMPLOYEE",
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
 
@@ -184,14 +190,15 @@ def init_db():
 
         # Seed sample employees if not present
         if session.query(Employee).count() == 0:
-            emp1 = Employee(name="John Doe", email="john.doe@example.com", department="Engineering")
-            emp2 = Employee(name="Jane Smith", email="jane.smith@example.com", department="Design")
-            session.add_all([emp1, emp2])
+            emp1 = Employee(name="John Doe", email="john.doe@example.com", department="Engineering", role="EMPLOYEE")
+            emp2 = Employee(name="Jane Smith", email="jane.smith@example.com", department="Design", role="EMPLOYEE")
+            hr1 = Employee(name="Sarah Connor", email="sarah.hr@example.com", department="Human Resources", role="HR")
+            session.add_all([emp1, emp2, hr1])
             session.flush()
 
             # Seed balances for all employees for all leave types
             all_types = session.query(LeaveType).all()
-            for emp in [emp1, emp2]:
+            for emp in [emp1, emp2, hr1]:
                 for lt in all_types:
                     balance = LeaveBalance(
                         employee_id=emp.id,

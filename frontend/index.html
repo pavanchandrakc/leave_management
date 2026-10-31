@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leave Management Portal | MCP HR Suite</title>
+  <meta name="description" content="Modern Employee & HR Leave Management portal integrated with PostgreSQL and Claude Desktop MCP.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Top Navbar -->
+  <header class="navbar">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="16" y1="2" x2="16" y2="6"></line>
+          <line x1="8" y1="2" x2="8" y2="6"></line>
+          <line x1="3" y1="10" x2="21" y2="10"></line>
+        </svg>
+      </div>
+      <span class="brand-title">LeaveFlow HR</span>
+    </div>
+
+    <div class="user-switch-bar">
+      <span id="roleBadge" class="role-badge employee">Employee View</span>
+      <label for="userSelect" style="font-size: 0.85rem; color: var(--text-muted);">Current User:</label>
+      <select id="userSelect" class="select-custom" aria-label="Select current user profile"></select>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="container">
+
+    <!-- Role-based Navigation Tabs -->
+    <nav class="tabs-nav" aria-label="Dashboard sections">
+      <!-- Employee Tab -->
+      <button class="tab-btn active" id="tabEmployee" onclick="switchView('employee')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+        My Leaves & Apply
+      </button>
+
+      <!-- HR Tab -->
+      <button class="tab-btn" id="tabHr" onclick="switchView('hr')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+        HR Pending Approvals
+        <span id="pendingBadge" class="badge-count" style="display: none;">0</span>
+      </button>
+
+      <!-- Analytics & Reports Tab -->
+      <button class="tab-btn" id="tabReports" onclick="switchView('reports')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+        Monthly Analytics & CSV
+      </button>
+    </nav>
+
+    <!-- ==================== 1. EMPLOYEE VIEW ==================== -->
+    <section id="viewEmployee">
+      <!-- Leave Balance KPI Cards -->
+      <div class="kpi-grid" id="balanceCards">
+        <!-- Dynamically injected -->
+      </div>
+
+      <!-- Apply Leave Form Panel -->
+      <div class="glass-panel" style="padding: 2rem; margin-bottom: 2.5rem;">
+        <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.5"><path d="M12 5v14M5 12h14"></path></svg>
+          Request New Leave
+        </h2>
+        <form id="applyLeaveForm" onsubmit="handleApplyLeave(event)">
+          <div class="form-grid">
+            <div class="form-group">
+              <label class="form-label" for="leaveTypeSelect">Leave Type</label>
+              <select id="leaveTypeSelect" class="form-input" required></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Calculated Duration</label>
+              <input type="text" id="durationDisplay" class="form-input" value="0 days" readonly style="opacity: 0.7;">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="startDateInput">Start Date</label>
+              <input type="date" id="startDateInput" class="form-input" required onchange="calculateDays()">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="endDateInput">End Date</label>
+              <input type="date" id="endDateInput" class="form-input" required onchange="calculateDays()">
+            </div>
+            <div class="form-group full-width">
+              <label class="form-label" for="reasonInput">Reason for Absence</label>
+              <textarea id="reasonInput" class="form-textarea" placeholder="Brief explanation of your leave request..." required></textarea>
+            </div>
+          </div>
+          <div style="margin-top: 1.5rem; display: flex; justify-content: flex-end;">
+            <button type="submit" class="btn btn-primary" id="btnSubmitLeave">
+              Submit Request
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Employee History Table -->
+      <div class="glass-panel" style="padding: 2rem;">
+        <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 1.5rem;">My Leave History</h2>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Request ID</th>
+                <th>Leave Type</th>
+                <th>Start Date</th>
+                <th>End Date</th>
+                <th>Days</th>
+                <th>Reason</th>
+                <th>Status</th>
+                <th>Manager Notes</th>
+              </tr>
+            </thead>
+            <tbody id="employeeHistoryBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 2. HR VIEW ==================== -->
+    <section id="viewHr" style="display: none;">
+      <!-- Pending Approvals Queue -->
+      <div class="glass-panel" style="padding: 2rem; margin-bottom: 2.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+          <div>
+            <h2 style="font-size: 1.25rem; font-weight: 700;">Pending Leave Requests</h2>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">Review and approve or reject employee submissions.</p>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="loadHrData()">
+            Refresh Queue
+          </button>
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Employee</th>
+                <th>Department</th>
+                <th>Leave Type</th>
+                <th>Dates</th>
+                <th>Days</th>
+                <th>Reason</th>
+                <th>Applied On</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="hrPendingBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- All Team Leave Records -->
+      <div class="glass-panel" style="padding: 2rem;">
+        <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 1.5rem;">All Historical Requests</h2>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Employee</th>
+                <th>Department</th>
+                <th>Type</th>
+                <th>Duration</th>
+                <th>Status</th>
+                <th>Manager Decision</th>
+              </tr>
+            </thead>
+            <tbody id="hrHistoryBody">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 3. REPORTS & ANALYTICS VIEW ==================== -->
+    <section id="viewReports" style="display: none;">
+      <div class="glass-panel" style="padding: 2rem; margin-bottom: 2rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+          <div>
+            <h2 style="font-size: 1.25rem; font-weight: 700;">Monthly Absenteeism & Leave Report</h2>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">View department distribution and export records to CSV.</p>
+          </div>
+          
+          <div style="display: flex; gap: 0.75rem; align-items: center;">
+            <select id="reportMonthSelect" class="select-custom" onchange="loadMonthlyReport()"></select>
+            <select id="reportYearSelect" class="select-custom" onchange="loadMonthlyReport()"></select>
+            <button class="btn btn-success" onclick="downloadCsv()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              Export CSV
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Analytics Metric Cards -->
+      <div class="kpi-grid" id="analyticsKpiGrid">
+        <!-- Injected -->
+      </div>
+
+      <!-- Department Breakdown & Leave Type Distribution -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+        <div class="glass-panel" style="padding: 1.5rem;">
+          <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 1rem;">Department Absenteeism (Days)</h3>
+          <div id="deptBreakdown"></div>
+        </div>
+        <div class="glass-panel" style="padding: 1.5rem;">
+          <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 1rem;">Leave Type Usage (Days)</h3>
+          <div id="typeBreakdown"></div>
+        </div>
+      </div>
+
+      <!-- Monthly Detailed Table -->
+      <div class="glass-panel" style="padding: 2rem;">
+        <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 1.25rem;">Detailed Monthly Records</h3>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Employee</th>
+                <th>Department</th>
+                <th>Leave Type</th>
+                <th>Start Date</th>
+                <th>End Date</th>
+                <th>Days</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="reportTableBody">
+              <!-- Injected -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
